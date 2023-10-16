@@ -2,10 +2,10 @@
 // Created by Jixian Jia on 2023-10-12.
 //
 
-#define SIZE 64  //the size of memory( in terms of blocks maybe)
-#define HighestOrder 6
+#define SIZE 1024  //the size of memory( in terms of blocks maybe)
+#define HighestOrder 10
 
-//notice 2^6=64 so our order ranges from 0 to 5. Higher order means larger block.
+//notice 2^6=64 so our order ranges from 1 to 6. Higher order means larger block.
 #include <iostream>
 #include <cstdlib>
 #include <cmath>
@@ -28,7 +28,7 @@ node_t* buddy_initialize(int size){
     return head;
 }
 
-void split(node_t *node){
+void split(node_t *node, int *counter){
     node_t *temp = node->next;
     auto *new_node =(node_t*) malloc(sizeof (node_t));
     node->order--;
@@ -38,6 +38,8 @@ void split(node_t *node){
     new_node->available = true;
     new_node->prev = node;
     new_node->next = temp;
+    *counter++;
+
 }
 
 /*
@@ -53,67 +55,74 @@ int find_order(int size){
 }
 
 /*
+ * counter = number of comparisons + number of splits
  * return true if successfully allocated. return false otherwise.
  */
-node_t *buddy_allocate(node_t *head, int size){
+node_t *buddy_allocate(node_t *head, int size, int *counter){
     if(head == nullptr)
         return nullptr;
     if (!head->available) {
-        return buddy_allocate(head->next, size);
+        *counter +=1;
+        return buddy_allocate(head->next, size,counter);
     }
     int order_required = find_order(size);
-    if(head->order < order_required) //not enough space
-        return buddy_allocate( head->next,size);
+    if(head->order < order_required) { //not enough space
+        *counter +=1;
+        return buddy_allocate(head->next, size, counter);
+    }
     else if (head-> order == order_required){ //perfect fit
         head->available = false;
+        *counter += 1;
         return head;
     }
     // split!
     else{
-        split(head);
-        return buddy_allocate(head,size);
+        split(head,counter);
+        return buddy_allocate(head,size,counter);
     }
 
 }
 
-void coalesce(node_t *node){
-    if (node == nullptr)
+void coalesce(node_t *node,int *counter){
+    if (node == nullptr) {
+        *counter += 1;
         return;
-
+    }
     if(node->prev != nullptr && node->prev->available && node->prev->order == node->order){
         node_t *temp = node->prev;
         node -> order ++;
         node ->prev = node ->prev->prev;
         free(temp);
-        coalesce(node);
+        *counter += 1;
+
+        coalesce(node,counter);
     }
     else if(node-> next!= nullptr && node->next->available && node->next->order == node->order){
         node_t *temp = node->next;
         node -> order ++;
         node ->next = node ->next->next;
         free(temp);
-        coalesce(node);
+        *counter += 1;
+
+        coalesce(node,counter);
     }
 
 }
 
-void buddy_free(node_t *node){
+void buddy_free(node_t *node,int *counter){
     node->available = true;
-    coalesce(node);
+    coalesce(node,counter);
 }
 
 void buddy_show(node_t *head){
     while(head){
         if(!head->available){
-            for(int i =0; i< pow(2,head->order); i++) {
-                std::cout << "*"; //means inuse
-            }
+            std::cout << "[" << pow(2,head->order) <<" bytes in use, order =" << head->order << "]  "; //means inuse
+
             head = head->next;
         }
         else {
-            for(int i =0; i< pow(2,head->order); i++) {
-                std::cout << "["<<i<<"]"; //means inuse
-            }
+            std::cout << "[" << pow(2,head->order) <<" bytes  free, order ="  << head->order << "]  "; //means inuse
             head = head->next;
         }
     }
@@ -123,12 +132,20 @@ void buddy_show(node_t *head){
 int main(){
     node_t *my_list = buddy_initialize(SIZE);
     buddy_show(my_list);
-
-    node_t *job1 = buddy_allocate(my_list,2);
+    int counter = 0;
+    node_t *job1 = buddy_allocate(my_list,20,&counter);
     buddy_show(my_list);
 
-    buddy_free(job1);
+    node_t *job2 = buddy_allocate(my_list,200,&counter);
     buddy_show(my_list);
+
+
+    buddy_free(job2,&counter);
+    buddy_show(my_list);
+    buddy_free(job1,&counter);
+    buddy_show(my_list);
+
+    std::cout << counter;
 
     return 0;
 }
